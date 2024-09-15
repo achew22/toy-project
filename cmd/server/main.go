@@ -1,9 +1,15 @@
 package main
 
 import (
+	"context"
 	"fmt"
+	"os"
 )
 
 func main() {
-	fmt.Println("Server is running...")
+	ctx := context.Background()
+	run(ctx, os.Args)
+}
+func run(ctx context.Context, args []string) {
+	fmt.Println("Server is running with args:", args)
 }
