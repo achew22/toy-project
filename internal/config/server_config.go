@@ -9,7 +9,7 @@ import (
 	"strings"
 
 	"github.com/hashicorp/hcl/v2"
-	"github.com/hashicorp/hcl/v2/hclparse"
+	"github.com/hashicorp/hcl/v2/hclsyntax"
 )
 
 // ServerConfig holds the configuration for the server
@@ -20,6 +20,36 @@ type ServerConfig struct {
 // ParseServerConfig parses and validates the server configuration from an HCL file
 func ParseServerConfig(filename string) (*ServerConfig, error) {
 	parser := hclparse.NewParser()
+	file, diags := parser.ParseHCLFile(filename)
+	if diags.HasErrors() {
+		return nil, fmt.Errorf("failed to parse HCL file: %s", diags.Error())
+	}
+
+	body, ok := file.Body.(*hclsyntax.Body)
+	if !ok {
+		return nil, fmt.Errorf("unexpected HCL body type")
+	}
+
+	var config ServerConfig
+	for _, block := range body.Blocks {
+		if block.Type == "server" {
+			for _, attr := range block.Body.Attributes {
+				if attr.Name == "listening_address" {
+					value, diags := attr.Expr.Value(nil)
+					if diags.HasErrors() {
+						return nil, fmt.Errorf("error reading listening_address: %s", diags.Error())
+					}
+					config.ListeningAddress = value.AsString()
+				}
+			}
+		}
+	}
+
+	if err := validateServerConfig(&config); err != nil {
+		return nil, err
+	}
+
+	return &config, nil
 	file, err := os.Open(filename)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open HCL file: %v", err)
