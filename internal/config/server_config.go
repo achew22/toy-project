@@ -1,7 +1,9 @@
 package config
 
 import (
+	"errors"
 	"fmt"
+	"net"
 
 	"os"
 
@@ -45,7 +47,27 @@ func ParseServerConfig(filename string, src []byte) (*ServerConfig, error) {
 					if diags.HasErrors() {
 						return nil, fmt.Errorf("error reading listening_address: %s", diags.Error())
 					}
-					config.ListeningAddress = value.AsString()
+					address := value.AsString()
+					if address == "" {
+						return nil, hcl.Diagnostics{&hcl.Diagnostic{
+							Severity: hcl.DiagError,
+							Summary:  "Missing listening address",
+							Detail:   "The 'listening_address' must be set in the server block.",
+							Subject:  &attr.Range,
+						}}
+					}
+
+					host, port, err := net.SplitHostPort(address)
+					if err != nil || host == "" || port == "" {
+						return nil, hcl.Diagnostics{&hcl.Diagnostic{
+							Severity: hcl.DiagError,
+							Summary:  "Invalid listening address",
+							Detail:   "The 'listening_address' must be in the format 'host:port'.",
+							Subject:  &attr.Range,
+						}}
+					}
+
+					config.ListeningAddress = address
 				}
 			}
 		}
