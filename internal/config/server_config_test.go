@@ -7,7 +7,11 @@ import (
 	"github.com/google/go-cmp/cmp"
 	"path/filepath"
 	"strings"
+	"flag"
 	"testing"
+)
+
+var update = flag.Bool("update", false, "update .out files if there is a difference")
 )
 
 func TestParseServerConfig(t *testing.T) {
@@ -41,8 +45,15 @@ func TestParseServerConfig(t *testing.T) {
 				if readErr != nil {
 					t.Fatalf("failed to read expected error output file: %v", readErr)
 				}
-				if !bytes.Equal(expectedError, []byte(err.Error())) {
-					t.Errorf("error output mismatch for file %s:\nExpected:\n%s\nGot:\n%s", file.Name(), expectedError, err.Error())
+				actualError := []byte(err.Error())
+				if !bytes.Equal(expectedError, actualError) {
+					if *update {
+						if writeErr := os.WriteFile(filepath.Join(testdataDir, outputFile), actualError, 0644); writeErr != nil {
+							t.Fatalf("failed to update error output file: %v", writeErr)
+						}
+					} else {
+						t.Errorf("error output mismatch for file %s:\nExpected:\n%s\nGot:\n%s", file.Name(), expectedError, actualError)
+					}
 				}
 			} else {
 				outputFile += ".out.json"
@@ -60,7 +71,17 @@ func TestParseServerConfig(t *testing.T) {
 				}
 
 				if diff := cmp.Diff(&expectedConfig, config); diff != "" {
-					t.Errorf("config output mismatch for file %s (-expected +got):\n%s", file.Name(), diff)
+					if *update {
+						actualConfigData, marshalErr := json.MarshalIndent(config, "", "  ")
+						if marshalErr != nil {
+							t.Fatalf("failed to marshal config to JSON: %v", marshalErr)
+						}
+						if writeErr := os.WriteFile(filepath.Join(testdataDir, outputFile), actualConfigData, 0644); writeErr != nil {
+							t.Fatalf("failed to update JSON output file: %v", writeErr)
+						}
+					} else {
+						t.Errorf("config output mismatch for file %s (-expected +got):\n%s", file.Name(), diff)
+					}
 				}
 			}
 		})
