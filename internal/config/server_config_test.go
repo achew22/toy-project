@@ -10,7 +10,6 @@ import (
 	"flag"
 	"testing"
 var update = flag.Bool("update", false, "update .out files if there is a difference")
-)
 
 func TestParseServerConfig(t *testing.T) {
 	testdataDir := "testdata"
