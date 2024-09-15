@@ -9,8 +9,6 @@ import (
 	"strings"
 	"flag"
 	"testing"
-)
-
 var update = flag.Bool("update", false, "update .out files if there is a difference")
 )
 
