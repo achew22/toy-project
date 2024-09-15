@@ -4,7 +4,11 @@ import (
 	"fmt"
 	"net"
 
-	"github.com/hashicorp/hcl/v2/gohcl"
+	"bufio"
+	"os"
+	"strings"
+
+	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclparse"
 )
 
@@ -16,15 +20,27 @@ type ServerConfig struct {
 // ParseServerConfig parses and validates the server configuration from an HCL file
 func ParseServerConfig(filename string) (*ServerConfig, error) {
 	parser := hclparse.NewParser()
-	file, diags := parser.ParseHCLFile(filename)
-	if diags.HasErrors() {
-		return nil, fmt.Errorf("failed to parse HCL file: %s", diags.Error())
+	file, err := os.Open(filename)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open HCL file: %v", err)
+	}
+	defer file.Close()
+
+	scanner := bufio.NewScanner(file)
+	var config ServerConfig
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if strings.HasPrefix(line, "listening_address") {
+			parts := strings.Split(line, "=")
+			if len(parts) != 2 {
+				return nil, fmt.Errorf("invalid format for listening_address")
+			}
+			config.ListeningAddress = strings.TrimSpace(strings.Trim(parts[1], `"`))
+		}
 	}
 
-	var config ServerConfig
-	diags = gohcl.DecodeBody(file.Body, nil, &config)
-	if diags.HasErrors() {
-		return nil, fmt.Errorf("failed to decode HCL body: %s", diags.Error())
+	if err := scanner.Err(); err != nil {
+		return nil, fmt.Errorf("error reading HCL file: %v", err)
 	}
 
 	if err := validateServerConfig(&config); err != nil {
