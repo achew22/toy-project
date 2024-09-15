@@ -2,7 +2,9 @@ package config
 
 import (
 	"encoding/json"
+	"bytes"
 	"os"
+	"github.com/google/go-cmp/cmp"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -35,22 +37,30 @@ func TestParseServerConfig(t *testing.T) {
 				if err == nil {
 					t.Fatalf("expected error for file %s, but got none", file.Name())
 				}
-				err = os.WriteFile(filepath.Join(testdataDir, outputFile), []byte(err.Error()), 0644)
-				if err != nil {
-					t.Fatalf("failed to write error output file: %v", err)
+				expectedError, readErr := os.ReadFile(filepath.Join(testdataDir, outputFile))
+				if readErr != nil {
+					t.Fatalf("failed to read expected error output file: %v", readErr)
+				}
+				if !bytes.Equal(expectedError, []byte(err.Error())) {
+					t.Errorf("error output mismatch for file %s:\nExpected:\n%s\nGot:\n%s", file.Name(), expectedError, err.Error())
 				}
 			} else {
 				outputFile += ".out.json"
 				if err != nil {
 					t.Fatalf("unexpected error for file %s: %v", file.Name(), err)
 				}
-				jsonData, err := json.MarshalIndent(config, "", "  ")
-				if err != nil {
-					t.Fatalf("failed to marshal config to JSON: %v", err)
+				expectedConfigData, readErr := os.ReadFile(filepath.Join(testdataDir, outputFile))
+				if readErr != nil {
+					t.Fatalf("failed to read expected JSON output file: %v", readErr)
 				}
-				err = os.WriteFile(filepath.Join(testdataDir, outputFile), jsonData, 0644)
-				if err != nil {
-					t.Fatalf("failed to write JSON output file: %v", err)
+
+				var expectedConfig ServerConfig
+				if err := json.Unmarshal(expectedConfigData, &expectedConfig); err != nil {
+					t.Fatalf("failed to unmarshal expected JSON: %v", err)
+				}
+
+				if diff := cmp.Diff(&expectedConfig, config); diff != "" {
+					t.Errorf("config output mismatch for file %s (-expected +got):\n%s", file.Name(), diff)
 				}
 			}
 		})
