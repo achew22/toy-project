@@ -1,14 +1,17 @@
 package config
 
 import (
-	"encoding/json"
 	"bytes"
+	"encoding/json"
+	"flag"
 	"os"
-	"github.com/google/go-cmp/cmp"
 	"path/filepath"
 	"strings"
-	"flag"
 	"testing"
+
+	"github.com/google/go-cmp/cmp"
+)
+
 var update = flag.Bool("update", false, "update .out files if there is a difference")
 
 func TestParseServerConfig(t *testing.T) {
