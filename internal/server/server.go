@@ -6,16 +6,18 @@ import (
 	"net"
 
 	"google.golang.org/grpc"
-)
+	"google.golang.org/grpc/reflection"
 
 type Server struct {
 	grpcServer *grpc.Server
 }
 
 func NewServer() *Server {
-	return &Server{
+	s := &Server{
 		grpcServer: grpc.NewServer(),
 	}
+	reflection.Register(s.grpcServer)
+	return s
 }
 
 func (s *Server) Run(ctx context.Context, address string) error {
