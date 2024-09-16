@@ -7,6 +7,7 @@ import (
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/reflection"
+)
 
 type Server struct {
 	grpcServer *grpc.Server
