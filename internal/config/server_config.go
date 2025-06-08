@@ -1,77 +1,127 @@
 package config
 
 import (
-	"errors"
 	"fmt"
 	"net"
 
 	"os"
 
-	hcl "github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
+	"github.com/zclconf/go-cty/cty"
+	"github.com/zclconf/go-cty/cty/function"
+
+	hcl "github.com/hashicorp/hcl/v2"
 )
 
-// ServerConfig holds the configuration for the server
+type bodyItem string
+
+const (
+	blockKind     bodyItem = "block"
+	attributeKind bodyItem = "attribute"
+)
+
+// Config holds the configuration for the server
+type Config struct {
+	Server ServerConfig `json:"server"`
+}
+
 type ServerConfig struct {
 	ListeningAddress string `json:"listening_address"`
 }
 
-func ParseServerConfigFile(filename string) (*ServerConfig, error) {
+func ParseConfigFile(filename string) (*Config, error) {
 	data, err := os.ReadFile(filename)
 	if err != nil {
 		return nil, fmt.Errorf("os.ReadFile(%q): %w", filename, err)
 	}
 
-	return ParseServerConfig(filename, data)
+	return ParseConfig(filename, data)
 }
 
-func ParseServerConfig(filename string, src []byte) (*ServerConfig, error) {
+func ParseConfig(filename string, src []byte) (*Config, hcl.Diagnostics) {
+
+	beginning := hcl.Pos{Line: 1, Column: 1}
 
 	// ParseServerConfig parses and validates the server configuration from an HCL file
-	file, diags := hclsyntax.ParseConfig(src, filename, hcl.Pos{Line: 1, Column: 1})
+	file, diags := hclsyntax.ParseConfig(src, filename, beginning)
 	if diags.HasErrors() {
-		return nil, fmt.Errorf("failed to parse HCL file: %s", diags.Error())
+		return nil, diags
 	}
 
-	body, ok := file.Body.(*hclsyntax.Body)
-	if !ok {
-		return nil, fmt.Errorf("unexpected HCL body type")
+	schema := &hcl.BodySchema{
+		Blocks: []hcl.BlockHeaderSchema{
+			{
+				Type:       "server",
+				LabelNames: []string{},
+			},
+		},
 	}
 
-	var config ServerConfig
-	for _, block := range body.Blocks {
-		if block.Type == "server" {
-			for _, attr := range block.Body.Attributes {
-				if attr.Name == "listening_address" {
-					value, diags := attr.Expr.Value(nil)
-					if diags.HasErrors() {
-						return nil, fmt.Errorf("error reading listening_address: %s", diags.Error())
-					}
-					address := value.AsString()
-					if address == "" {
-						return nil, hcl.Diagnostics{&hcl.Diagnostic{
-							Severity: hcl.DiagError,
-							Summary:  "Missing listening address",
-							Detail:   "The 'listening_address' must be set in the server block.",
-							Subject:  &attr.Range,
-						}}
-					}
+	content, diags := file.Body.Content(schema)
+	if diags.HasErrors() {
+		return nil, diags
+	}
 
-					host, port, err := net.SplitHostPort(address)
-					if err != nil || host == "" || port == "" {
-						return nil, hcl.Diagnostics{&hcl.Diagnostic{
-							Severity: hcl.DiagError,
-							Summary:  "Invalid listening address",
-							Detail:   "The 'listening_address' must be in the format 'host:port'.",
-							Subject:  &attr.Range,
-						}}
-					}
+	var config Config
+	if len(content.Blocks.OfType("server")) != 1 {
+		diags = diags.Append(&hcl.Diagnostic{
+			Severity: hcl.DiagError,
+			Summary:  "Expected exactly one server block",
+			Detail:   "You provided a non-one number of server blocks.",
+		})
+	}
+	for _, block := range content.Blocks.OfType("server") {
+		sc, newDiags := parseServerConfig(block)
+		diags = diags.Extend(newDiags)
+		config.Server = sc
+	}
 
-					config.ListeningAddress = address
-				}
-			}
+	return &config, diags
+}
+
+func parseServerConfig(block *hcl.Block) (ServerConfig, hcl.Diagnostics) {
+	var sc ServerConfig
+
+	schema := &hcl.BodySchema{
+		Attributes: []hcl.AttributeSchema{
+			{
+				Name:     "listening_address",
+				Required: true,
+			},
+		},
+	}
+	content, diags := block.Body.Content(schema)
+	if diags.HasErrors() {
+		return ServerConfig{}, diags
+	}
+
+	listeningAddress := content.Attributes["listening_address"]
+	listeningAddressValue, listeningDiags := listeningAddress.Expr.Value(&hcl.EvalContext{
+		Functions: map[string]function.Function{
+			"helloworld::with::more::things": function.New(&function.Spec{
+				Description: "hello world function",
+				Type:        function.StaticReturnType(cty.String),
+				Impl: func(args []cty.Value, retType cty.Type) (cty.Value, error) {
+					return cty.StringVal("function_with_colons:port"), nil
+				},
+			}),
+		},
+	})
+	if diags.HasErrors() {
+		diags = diags.Extend(listeningDiags)
+	} else {
+		address := listeningAddressValue.AsString()
+		host, port, err := net.SplitHostPort(address)
+		if err != nil || host == "" || port == "" {
+			diags = diags.Append(&hcl.Diagnostic{
+				Severity: hcl.DiagError,
+				Summary:  "Invalid listening address",
+				Detail:   "The 'listening_address' must be in the format 'host:port'.",
+				Subject:  listeningAddress.Expr.Range().Ptr(),
+			})
 		}
+		sc.ListeningAddress = address
 	}
 
-	return &config, nil
+	return sc, diags
 }

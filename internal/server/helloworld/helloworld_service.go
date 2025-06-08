@@ -2,16 +2,17 @@ package helloworld
 
 import (
 	"context"
-	apiv1 "path/to/your/api/v1" // Update this import path to match your project structure
+
+	api "github.com/achew22/toy-project/api/v1"
 )
 
 // HelloWorldService implements the HelloWorldServer interface
 type HelloWorldService struct {
-	apiv1.UnimplementedHelloWorldServer
+	api.UnimplementedHelloWorldServer
 }
 
 // Greet implements the Greet method of the HelloWorldServer interface
-func (s *HelloWorldService) Greet(ctx context.Context, req *apiv1.GreetRequest) (*apiv1.GreetResponse, error) {
+func (s *HelloWorldService) Greet(ctx context.Context, req *api.GreetRequest) (*api.GreetResponse, error) {
 	message := "Hello, " + req.GetName()
-	return &apiv1.GreetResponse{Message: message}, nil
+	return &api.GreetResponse{Message: message}, nil
 }

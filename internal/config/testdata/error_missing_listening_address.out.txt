@@ -1,0 +1,1 @@
+testdata/error_missing_listening_address.hcl:1,8-8: Missing required argument; The argument "listening_address" is required, but no definition was found.

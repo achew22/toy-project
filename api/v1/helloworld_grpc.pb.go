@@ -19,7 +19,7 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	HelloWorld_Greet_FullMethodName = "/api.v1.HelloWorld/Greet"
+	HelloWorld_Greet_FullMethodName = "/cmd.achew.toyproject.api.v1.HelloWorld/Greet"
 )
 
 // HelloWorldClient is the client API for HelloWorld service.
@@ -108,7 +108,7 @@ func _HelloWorld_Greet_Handler(srv interface{}, ctx context.Context, dec func(in
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
 var HelloWorld_ServiceDesc = grpc.ServiceDesc{
-	ServiceName: "api.v1.HelloWorld",
+	ServiceName: "cmd.achew.toyproject.api.v1.HelloWorld",
 	HandlerType: (*HelloWorldServer)(nil),
 	Methods: []grpc.MethodDesc{
 		{
