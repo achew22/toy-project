@@ -1,0 +1,17 @@
+syntax = "proto3";
+
+package cmd.achew.toyproject.servertest.golden;
+
+option go_package = "github.com/achew22/toy-project/internal/server/servertest/golden;golden";
+
+import "internal/server/servertest/client/client.proto";
+
+message TestStepIn {
+  string actor = 1;
+
+  cmd.achew.toyproject.api.v1.Request rpc = 2;
+}
+
+message TestStepOut {
+  cmd.achew.toyproject.api.v1.Response rpc = 1;
+}

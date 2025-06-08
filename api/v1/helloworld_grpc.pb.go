@@ -4,7 +4,7 @@
 // - protoc             (unknown)
 // source: api/v1/helloworld.proto
 
-package apiv1
+package api
 
 import (
 	context "context"

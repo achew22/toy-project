@@ -5,6 +5,8 @@ import (
 	"log"
 	"net"
 
+	api "github.com/achew22/toy-project/api/v1"
+	"github.com/achew22/toy-project/internal/server/helloworld"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/reflection"
 )
@@ -22,6 +24,8 @@ func NewServer() *Server {
 }
 
 func (s *Server) register() {
+	helloworldService := &helloworld.HelloWorldService{}
+	api.RegisterHelloWorldServer(s.grpcServer, helloworldService)
 	reflection.Register(s.grpcServer)
 }
 

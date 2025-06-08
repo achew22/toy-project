@@ -1,0 +1,21 @@
+syntax = "proto3";
+
+package cmd.achew.toyproject.api.v1;
+
+option go_package = "github.com/achew22/toy-project/internal/server/servertest/client;client";
+
+import "google/rpc/status.proto";
+import "api/v1/helloworld.proto";
+
+message Request {
+  oneof request {
+    GreetRequest greet_request = 1;
+  }
+}
+
+message Response {
+  oneof response {
+    google.rpc.Status status = 1;
+    GreetResponse greet_response = 2;
+  }
+}

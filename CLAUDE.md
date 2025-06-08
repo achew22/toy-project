@@ -35,7 +35,7 @@ This is a Go-based gRPC server project with HCL configuration parsing:
 
 - Uses buf for protobuf management with local tool paths (internal/tools/)
 - Code generation configured in buf.gen.yaml with source_relative paths
-- Generated files: helloworld.pb.go and helloworld_grpc.pb.go
+- Always use `make protos` to generate protos (protobufs)
 
 ### Configuration Format
 
