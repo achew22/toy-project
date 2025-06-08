@@ -17,8 +17,12 @@ func NewServer() *Server {
 	s := &Server{
 		grpcServer: grpc.NewServer(),
 	}
-	reflection.Register(s.grpcServer)
+	s.register()
 	return s
+}
+
+func (s *Server) register() {
+	reflection.Register(s.grpcServer)
 }
 
 func (s *Server) Run(ctx context.Context, address string) error {
@@ -26,17 +30,32 @@ func (s *Server) Run(ctx context.Context, address string) error {
 	if err != nil {
 		return err
 	}
+	return s.Serve(ctx, lis)
+}
 
+func (s *Server) Serve(ctx context.Context, lis net.Listener) error {
 	go func() {
 		<-ctx.Done()
 		log.Println("Shutting down gRPC server...")
 		s.grpcServer.GracefulStop()
 	}()
 
-	log.Printf("Starting gRPC server on %s\n", address)
+	log.Printf("Starting gRPC server on %s\n", lis.Addr().String())
 	if err := s.grpcServer.Serve(lis); err != nil {
 		return err
 	}
 
 	return nil
+}
+
+func (s *Server) GRPCServer() *grpc.Server {
+	return s.grpcServer
+}
+
+func (s *Server) Stop() {
+	s.grpcServer.Stop()
+}
+
+func (s *Server) GracefulStop() {
+	s.grpcServer.GracefulStop()
 }

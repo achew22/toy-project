@@ -3,7 +3,9 @@
     "allow": [
       "Bash(find:*)",
       "Bash(ls:*)",
-      "Bash(go help:*)"
+      "Bash(go help:*)",
+      "Bash(mkdir:*)",
+      "Bash(go test:*)"
     ],
     "deny": []
   }
