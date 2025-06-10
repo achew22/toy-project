@@ -1,0 +1,5 @@
+rpc: {
+  greet_response: {
+    message: "Hello, Alice"
+  }
+}

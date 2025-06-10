@@ -1,0 +1,6 @@
+actor: "test_user"
+rpc: {
+  greet_request: {
+    name: "World"
+  }
+}

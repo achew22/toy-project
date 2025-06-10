@@ -1,8 +1,8 @@
 syntax = "proto3";
 
-package cmd.achew.toyproject.servertest.golden;
+package cmd.achew.toyproject.servertest.proto.v1;
 
-option go_package = "github.com/achew22/toy-project/internal/server/servertest/golden;golden";
+option go_package = "github.com/achew22/toy-project/internal/server/servertest/proto/h1;proto";
 
 import "internal/server/servertest/client/client.proto";
 

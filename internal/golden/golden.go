@@ -11,6 +11,9 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
+	"google.golang.org/protobuf/encoding/prototext"
+	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/testing/protocmp"
 )
 
 // Update is a flag that controls whether golden files should be updated
@@ -28,6 +31,8 @@ type TestConfig struct {
 	ErrorOutputExt string
 	// SuccessOutputExt is the file extension for success output files (e.g., ".out.json")
 	SuccessOutputExt string
+	// UsePrototext enables protobuf text encoding instead of JSON
+	UsePrototext bool
 }
 
 // DefaultConfig returns a default TestConfig for HCL-based tests
@@ -113,24 +118,81 @@ func testSuccessCase[T any](t *testing.T, config *TestConfig, fileName, outputFi
 
 	expectedData, readErr := os.ReadFile(filepath.Join(config.TestDataDir, outputFile))
 	if readErr != nil {
-		t.Logf("failed to read expected JSON output file: %v", readErr)
+		if config.UsePrototext {
+			t.Logf("failed to read expected prototext output file: %v", readErr)
+		} else {
+			t.Logf("failed to read expected JSON output file: %v", readErr)
+		}
 	}
 
 	var expected T
-	if err := json.Unmarshal(expectedData, &expected); err != nil {
-		t.Errorf("failed to unmarshal expected JSON: %v", err)
+	var unmarshalErr error
+	
+	if config.UsePrototext {
+		// For prototext, T must be a proto.Message
+		if resultMsg, ok := any(result).(proto.Message); ok {
+			expectedMsg := proto.Clone(resultMsg)
+			proto.Reset(expectedMsg)
+			unmarshalErr = prototext.Unmarshal(expectedData, expectedMsg)
+			expected = any(expectedMsg).(T)
+		} else {
+			t.Errorf("result type %T does not implement proto.Message", result)
+			return
+		}
+	} else {
+		unmarshalErr = json.Unmarshal(expectedData, &expected)
+	}
+
+	if unmarshalErr != nil {
+		if config.UsePrototext {
+			t.Errorf("failed to unmarshal expected prototext: %v", unmarshalErr)
+		} else {
+			t.Errorf("failed to unmarshal expected JSON: %v", unmarshalErr)
+		}
 		return
 	}
 
-	if diff := cmp.Diff(expected, result, cmpopts.EquateEmpty()); diff != "" {
+	var diffOpts []cmp.Option
+	diffOpts = append(diffOpts, cmpopts.EquateEmpty())
+	
+	// If using prototext, use protocmp.Transform for proper protobuf comparison
+	if config.UsePrototext {
+		diffOpts = append(diffOpts, protocmp.Transform())
+	}
+	
+	if diff := cmp.Diff(expected, result, diffOpts...); diff != "" {
 		if *Update {
-			actualData, marshalErr := json.MarshalIndent(result, "", "  ")
+			var actualData []byte
+			var marshalErr error
+			
+			if config.UsePrototext {
+				if resultMsg, ok := any(result).(proto.Message); ok {
+					actualData, marshalErr = prototext.MarshalOptions{
+						Multiline: true,
+						Indent:    "  ",
+					}.Marshal(resultMsg)
+				} else {
+					t.Errorf("result type %T does not implement proto.Message", result)
+					return
+				}
+			} else {
+				actualData, marshalErr = json.MarshalIndent(result, "", "  ")
+			}
+			
 			if marshalErr != nil {
-				t.Errorf("failed to marshal result to JSON: %v", marshalErr)
+				if config.UsePrototext {
+					t.Errorf("failed to marshal result to prototext: %v", marshalErr)
+				} else {
+					t.Errorf("failed to marshal result to JSON: %v", marshalErr)
+				}
 				return
 			}
 			if writeErr := os.WriteFile(filepath.Join(config.TestDataDir, outputFile), actualData, 0644); writeErr != nil {
-				t.Errorf("failed to update JSON output file: %v", writeErr)
+				if config.UsePrototext {
+					t.Errorf("failed to update prototext output file: %v", writeErr)
+				} else {
+					t.Errorf("failed to update JSON output file: %v", writeErr)
+				}
 			}
 			return
 		}
