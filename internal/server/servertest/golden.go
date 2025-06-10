@@ -6,7 +6,7 @@ import (
 
 	"google.golang.org/protobuf/encoding/prototext"
 
-	"github.com/achew22/toy-project/internal/golden"
+	"github.com/achew22/toy-project/internal/goldentest"
 	"github.com/achew22/toy-project/internal/server/servertest/client"
 
 	pb "github.com/achew22/toy-project/internal/server/servertest/proto/v1"
@@ -33,7 +33,7 @@ func RunGoldenStepTests(t *testing.T) {
 	// Create the unified client
 	grpcClient := client.NewClient(conn)
 
-	config := &golden.TestConfig{
+	config := &goldentest.TestConfig{
 		TestDataDir:      "testdata",
 		InputExt:         ".in.textpb",
 		ErrorPrefix:      "error_",
@@ -42,7 +42,7 @@ func RunGoldenStepTests(t *testing.T) {
 		UsePrototext:     true,
 	}
 
-	stepTestFunc := func(stepFile golden.StepFile) (*pb.TestStepOut, error) {
+	stepTestFunc := func(stepFile goldentest.StepFile) (*pb.TestStepOut, error) {
 		// Parse the input step
 		stepIn := &pb.TestStepIn{}
 		if err := prototext.Unmarshal(stepFile.Data, stepIn); err != nil {
@@ -66,5 +66,5 @@ func RunGoldenStepTests(t *testing.T) {
 		return []byte(err.Error())
 	}
 
-	golden.RunStepTests(t, config, stepTestFunc, errorFunc)
+	goldentest.RunStepTests(t, config, stepTestFunc, errorFunc)
 }

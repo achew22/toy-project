@@ -1,4 +1,4 @@
-package golden
+package goldentest
 
 import (
 	"bytes"

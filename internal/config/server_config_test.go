@@ -3,12 +3,12 @@ package config
 import (
 	"testing"
 
-	"github.com/achew22/toy-project/internal/golden"
+	"github.com/achew22/toy-project/internal/goldentest"
 	"github.com/hashicorp/hcl/v2"
 )
 
 func TestParseConfig(t *testing.T) {
-	config := golden.DefaultConfig()
+	config := goldentest.DefaultConfig()
 	
 	testFunc := func(filePath string, data []byte) (*Config, error) {
 		config, diags := ParseConfig(filePath, data)
@@ -25,5 +25,5 @@ func TestParseConfig(t *testing.T) {
 		return []byte(err.Error())
 	}
 
-	golden.RunTests(t, config, testFunc, errorFunc)
+	goldentest.RunTests(t, config, testFunc, errorFunc)
 }
