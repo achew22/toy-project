@@ -45,7 +45,7 @@ func RunStepTests[T any](t *testing.T, config *TestConfig, stepTestFunc StepTest
 
 		t.Run(entry.Name(), func(t *testing.T) {
 			stepDir := filepath.Join(config.TestDataDir, entry.Name())
-			stepFiles, validateErr := validateAndLoadStepFiles(stepDir, config.InputExt)
+			stepFiles, validateErr := validateAndLoadStepFiles(stepDir, config.InputExt, config)
 			if validateErr != nil {
 				t.Fatalf("failed to validate step directory %s: %v", entry.Name(), validateErr)
 			}
@@ -201,7 +201,7 @@ func testSuccessCaseSteps[T any](t *testing.T, config *TestConfig, stepDir strin
 
 // validateAndLoadStepFiles validates that a directory contains a valid sequence of step files
 // and loads their content. Returns an error if the sequence is invalid or if any files are unexpected.
-func validateAndLoadStepFiles(stepDir, inputExt string) ([]StepFile, error) {
+func validateAndLoadStepFiles(stepDir, inputExt string, config *TestConfig) ([]StepFile, error) {
 	entries, err := os.ReadDir(stepDir)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read step directory: %w", err)
@@ -216,8 +216,8 @@ func validateAndLoadStepFiles(stepDir, inputExt string) ([]StepFile, error) {
 			return nil, fmt.Errorf("unexpected subdirectory %s in step directory", entry.Name())
 		}
 
-		// Skip output files (.out.textpb, .out.txt, etc.)
-		if strings.Contains(entry.Name(), ".out.") {
+		// Skip output files - check for both success and error output extensions
+		if strings.HasSuffix(entry.Name(), config.SuccessOutputExt) || strings.HasSuffix(entry.Name(), config.ErrorOutputExt) {
 			continue
 		}
 		

@@ -1,4 +1,4 @@
-package client
+package client_test
 
 import (
 	"context"
@@ -6,6 +6,7 @@ import (
 
 	api "github.com/achew22/toy-project/api/v1"
 	"github.com/achew22/toy-project/internal/server/servertest"
+	"github.com/achew22/toy-project/internal/server/servertest/client"
 )
 
 func TestClient_Execute(t *testing.T) {
@@ -24,24 +25,24 @@ func TestClient_Execute(t *testing.T) {
 	defer conn.Close()
 
 	// Create the unified client
-	client := NewClient(conn)
+	c := client.NewClient(conn)
 
 	// Test successful request
-	req := &Request{
-		Request: &Request_GreetRequest{
+	req := &client.Request{
+		Request: &client.Request_GreetRequest{
 			GreetRequest: &api.GreetRequest{
 				Name: "World",
 			},
 		},
 	}
 
-	resp, err := client.Execute(context.Background(), req)
+	resp, err := c.Execute(context.Background(), req)
 	if err != nil {
 		t.Fatalf("Execute failed: %v", err)
 	}
 
 	// Check that we got a successful response
-	greetResp, ok := resp.Response.(*Response_GreetResponse)
+	greetResp, ok := resp.Response.(*client.Response_GreetResponse)
 	if !ok {
 		t.Fatalf("Expected GreetResponse, got %T", resp.Response)
 	}

@@ -1,0 +1,6 @@
+actor: "bob"
+rpc: {
+  greet_request: {
+    name: "Bob"
+  }
+}

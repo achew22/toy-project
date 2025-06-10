@@ -33,7 +33,11 @@ func TestValidateAndLoadStepFiles(t *testing.T) {
 			}
 		}
 
-		stepFiles, err := validateAndLoadStepFiles(stepDir, ".hcl")
+		config := &TestConfig{
+			SuccessOutputExt: ".out.json",
+			ErrorOutputExt:   ".out.txt",
+		}
+		stepFiles, err := validateAndLoadStepFiles(stepDir, ".hcl", config)
 		if err != nil {
 			t.Fatalf("expected no error, got: %v", err)
 		}
@@ -72,7 +76,11 @@ func TestValidateAndLoadStepFiles(t *testing.T) {
 			}
 		}
 
-		_, err := validateAndLoadStepFiles(stepDir, ".hcl")
+		config := &TestConfig{
+			SuccessOutputExt: ".out.json",
+			ErrorOutputExt:   ".out.txt",
+		}
+		_, err := validateAndLoadStepFiles(stepDir, ".hcl", config)
 		if err == nil {
 			t.Fatal("expected error for gap in sequence, got none")
 		}
@@ -93,7 +101,11 @@ func TestValidateAndLoadStepFiles(t *testing.T) {
 			t.Fatalf("failed to write file: %v", err)
 		}
 
-		_, err := validateAndLoadStepFiles(stepDir, ".hcl")
+		config := &TestConfig{
+			SuccessOutputExt: ".out.json",
+			ErrorOutputExt:   ".out.txt",
+		}
+		_, err := validateAndLoadStepFiles(stepDir, ".hcl", config)
 		if err == nil {
 			t.Fatal("expected error for wrong extension, got none")
 		}
@@ -114,7 +126,11 @@ func TestValidateAndLoadStepFiles(t *testing.T) {
 			t.Fatalf("failed to write file: %v", err)
 		}
 
-		_, err := validateAndLoadStepFiles(stepDir, ".hcl")
+		config := &TestConfig{
+			SuccessOutputExt: ".out.json",
+			ErrorOutputExt:   ".out.txt",
+		}
+		_, err := validateAndLoadStepFiles(stepDir, ".hcl", config)
 		if err == nil {
 			t.Fatal("expected error for invalid filename, got none")
 		}
@@ -135,7 +151,11 @@ func TestValidateAndLoadStepFiles(t *testing.T) {
 			t.Fatalf("failed to write file: %v", err)
 		}
 
-		_, err := validateAndLoadStepFiles(stepDir, ".hcl")
+		config := &TestConfig{
+			SuccessOutputExt: ".out.json",
+			ErrorOutputExt:   ".out.txt",
+		}
+		_, err := validateAndLoadStepFiles(stepDir, ".hcl", config)
 		if err == nil {
 			t.Fatal("expected error for zero step number, got none")
 		}
@@ -176,11 +196,17 @@ func TestRunStepTests(t *testing.T) {
 		}
 	}
 
-	// Create expected output file
-	expectedOutput := `"first,second"`
-	outputFile := filepath.Join(tempDir, "test_case.out.json")
-	if err := os.WriteFile(outputFile, []byte(expectedOutput), 0644); err != nil {
-		t.Fatalf("failed to write output file: %v", err)
+	// Create expected output files for each step
+	step1Output := `"first"`
+	step1OutputFile := filepath.Join(stepDir, "1.out.json")
+	if err := os.WriteFile(step1OutputFile, []byte(step1Output), 0644); err != nil {
+		t.Fatalf("failed to write step 1 output file: %v", err)
+	}
+
+	step2Output := `"second"`
+	step2OutputFile := filepath.Join(stepDir, "2.out.json")
+	if err := os.WriteFile(step2OutputFile, []byte(step2Output), 0644); err != nil {
+		t.Fatalf("failed to write step 2 output file: %v", err)
 	}
 
 	config := &TestConfig{
@@ -191,12 +217,8 @@ func TestRunStepTests(t *testing.T) {
 		SuccessOutputExt: ".out.json",
 	}
 
-	stepTestFunc := func(stepFiles []StepFile) (string, error) {
-		var contents []string
-		for _, stepFile := range stepFiles {
-			contents = append(contents, string(stepFile.Data))
-		}
-		return strings_Join(contents, ","), nil
+	stepTestFunc := func(stepFile StepFile) (string, error) {
+		return string(stepFile.Data), nil
 	}
 
 	errorFunc := func(err error) []byte {
