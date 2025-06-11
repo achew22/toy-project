@@ -140,7 +140,7 @@ func generateGoFile(g *protogen.GeneratedFile, services []*protogen.Service) {
 		for _, method := range service.Methods {
 			methodName := strings.ToLower(method.GoName)
 			clientName := strings.ToLower(service.GoName) + "Client"
-			
+
 			g.P(fmt.Sprintf(`	case *Request_%sRequest:`, strings.Title(methodName)))
 			g.P(fmt.Sprintf(`		resp, err := c.%s.%s(ctx, r.%sRequest)`, clientName, method.GoName, strings.Title(methodName)))
 			g.P(`		if err != nil {`)

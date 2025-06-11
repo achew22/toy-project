@@ -2,6 +2,7 @@ package goldentest
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -14,8 +15,24 @@ import (
 	"github.com/google/go-cmp/cmp/cmpopts"
 )
 
-// StepTestFunc is a function that processes a single input file and returns either a result or an error
-type StepTestFunc[T any] func(stepFile StepFile) (T, error)
+// StepTestFunc is a function that processes a single input file and returns either a result or an error.
+// The function receives a context, fixture, and StepFile containing the step information.
+//
+// Parameters:
+//   - ctx: Context for the test step (for cancellation and timeouts)
+//   - fixture: Fixture created by SetUpFunc for this test case
+//   - stepFile: Information about the current step including file path and content
+//
+// Returns:
+//   - T: Result of processing the step (for success cases)
+//   - error: Error encountered during processing (for error cases)
+//
+// Example:
+//
+//	StepTestFunc: func(ctx context.Context, fixture *ServerFixture, stepFile StepFile) (*Response, error) {
+//		return fixture.Client.ProcessStep(ctx, stepFile.Data)
+//	}
+type StepTestFunc[T, F any] func(ctx context.Context, fixture F, stepFile StepFile) (T, error)
 
 // StepFile represents a single step in a sequence with its file path and data
 type StepFile struct {
@@ -28,7 +45,7 @@ type StepFile struct {
 }
 
 // runStepTests runs golden file tests in step mode for all directories in the specified directory
-func (config *TestConfig[T]) runStepTests(t *testing.T, dir string) {
+func (config *TestConfig[T, F]) runStepTests(t *testing.T, dir string) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		t.Fatalf("failed to read testdata directory: %v", err)
@@ -40,6 +57,25 @@ func (config *TestConfig[T]) runStepTests(t *testing.T, dir string) {
 		}
 
 		t.Run(entry.Name(), func(t *testing.T) {
+			// Set up fixture for this test case
+			var fixture F
+			var setUpErr error
+			if config.SetUp != nil {
+				fixture, setUpErr = config.SetUp(t)
+				if setUpErr != nil {
+					t.Fatalf("SetUp failed for test %s: %v", entry.Name(), setUpErr)
+				}
+			}
+
+			// Ensure teardown runs even if test fails
+			defer func() {
+				if config.TearDown != nil {
+					if tearDownErr := config.TearDown(t, fixture); tearDownErr != nil {
+						t.Errorf("TearDown failed for test %s: %v", entry.Name(), tearDownErr)
+					}
+				}
+			}()
+
 			stepDir := filepath.Join(dir, entry.Name())
 			stepFiles, validateErr := validateAndLoadStepFiles(stepDir, config.InputExt, config)
 			if validateErr != nil {
@@ -51,7 +87,7 @@ func (config *TestConfig[T]) runStepTests(t *testing.T, dir string) {
 
 			// Execute stepTestFunc for each step file
 			for _, stepFile := range stepFiles {
-				result, err := config.StepTestFunc(stepFile)
+				result, err := config.StepTestFunc(t.Context(), fixture, stepFile)
 				if err != nil {
 					testErr = err
 					break
@@ -89,7 +125,7 @@ func (config *TestConfig[T]) runStepTests(t *testing.T, dir string) {
 	}
 }
 
-func (config *TestConfig[T]) testErrorCaseStep(t *testing.T, stepDir, errorFile string, testErr error, errorFunc ErrorFunc) {
+func (config *TestConfig[T, F]) testErrorCaseStep(t *testing.T, stepDir, errorFile string, testErr error, errorFunc ErrorFunc) {
 	expectedError, readErr := os.ReadFile(filepath.Join(stepDir, errorFile))
 	if readErr != nil {
 		t.Logf("failed to read expected error output file: %v", readErr)
@@ -107,7 +143,7 @@ func (config *TestConfig[T]) testErrorCaseStep(t *testing.T, stepDir, errorFile 
 	}
 }
 
-func (config *TestConfig[T]) testSuccessCaseSteps(t *testing.T, stepDir string, stepFiles []StepFile, results []T) {
+func (config *TestConfig[T, F]) testSuccessCaseSteps(t *testing.T, stepDir string, stepFiles []StepFile, results []T) {
 	if len(results) != len(stepFiles) {
 		t.Errorf("expected %d results, got %d", len(stepFiles), len(results))
 		return
@@ -155,7 +191,7 @@ func (config *TestConfig[T]) testSuccessCaseSteps(t *testing.T, stepDir string, 
 
 // validateAndLoadStepFiles validates that a directory contains a valid sequence of step files
 // and loads their content. Returns an error if the sequence is invalid or if any files are unexpected.
-func validateAndLoadStepFiles[T any](stepDir, inputExt string, config *TestConfig[T]) ([]StepFile, error) {
+func validateAndLoadStepFiles[T, F any](stepDir, inputExt string, config *TestConfig[T, F]) ([]StepFile, error) {
 	entries, err := os.ReadDir(stepDir)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read step directory: %w", err)

@@ -1,6 +1,8 @@
 module github.com/achew22/toy-project
 
-go 1.21.0
+go 1.24
+
+toolchain go1.24.4
 
 require (
 	github.com/agext/levenshtein v1.2.1 // indirect

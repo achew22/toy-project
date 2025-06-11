@@ -8,11 +8,11 @@ import (
 )
 
 func TestParseConfig(t *testing.T) {
-	config := &goldentest.TestConfig[*Config]{
+	config := &goldentest.TestConfig[*Config, struct{}]{
 		InputExt:         ".hcl",
 		ErrorOutputExt:   ".txt",
 		SuccessOutputExt: ".json",
-		TestOneShotFunc: func(filePath string, data []byte) (*Config, error) {
+		TestOneShotFunc: func(_ struct{}, filePath string, data []byte) (*Config, error) {
 			config, diags := ParseConfig(filePath, data)
 			if diags.HasErrors() {
 				return nil, diags

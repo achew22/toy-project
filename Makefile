@@ -14,4 +14,5 @@ test:
 test-update:
 	go test ./... -update
 
-
+fmt:
+	go fmt ./...

@@ -1,6 +1,7 @@
 package goldentest
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"testing"
@@ -33,7 +34,7 @@ func TestValidateAndLoadStepFiles(t *testing.T) {
 			}
 		}
 
-		config := &TestConfig[string]{
+		config := &TestConfig[string, struct{}]{
 			SuccessOutputExt: ".json",
 			ErrorOutputExt:   ".txt",
 		}
@@ -76,9 +77,9 @@ func TestValidateAndLoadStepFiles(t *testing.T) {
 			}
 		}
 
-		config := &TestConfig[string]{
-			SuccessOutputExt: ".out.json",
-			ErrorOutputExt:   ".out.txt",
+		config := &TestConfig[string, struct{}]{
+			SuccessOutputExt: ".json",
+			ErrorOutputExt:   ".txt",
 		}
 		_, err := validateAndLoadStepFiles(stepDir, ".hcl", config)
 		if err == nil {
@@ -101,9 +102,9 @@ func TestValidateAndLoadStepFiles(t *testing.T) {
 			t.Fatalf("failed to write file: %v", err)
 		}
 
-		config := &TestConfig[string]{
-			SuccessOutputExt: ".out.json",
-			ErrorOutputExt:   ".out.txt",
+		config := &TestConfig[string, struct{}]{
+			SuccessOutputExt: ".json",
+			ErrorOutputExt:   ".txt",
 		}
 		_, err := validateAndLoadStepFiles(stepDir, ".hcl", config)
 		if err == nil {
@@ -126,9 +127,9 @@ func TestValidateAndLoadStepFiles(t *testing.T) {
 			t.Fatalf("failed to write file: %v", err)
 		}
 
-		config := &TestConfig[string]{
-			SuccessOutputExt: ".out.json",
-			ErrorOutputExt:   ".out.txt",
+		config := &TestConfig[string, struct{}]{
+			SuccessOutputExt: ".json",
+			ErrorOutputExt:   ".txt",
 		}
 		_, err := validateAndLoadStepFiles(stepDir, ".hcl", config)
 		if err == nil {
@@ -151,9 +152,9 @@ func TestValidateAndLoadStepFiles(t *testing.T) {
 			t.Fatalf("failed to write file: %v", err)
 		}
 
-		config := &TestConfig[string]{
-			SuccessOutputExt: ".out.json",
-			ErrorOutputExt:   ".out.txt",
+		config := &TestConfig[string, struct{}]{
+			SuccessOutputExt: ".json",
+			ErrorOutputExt:   ".txt",
 		}
 		_, err := validateAndLoadStepFiles(stepDir, ".hcl", config)
 		if err == nil {
@@ -209,11 +210,11 @@ func TestRunStepTests(t *testing.T) {
 		t.Fatalf("failed to write step 2 output file: %v", err)
 	}
 
-	config := &TestConfig[string]{
+	config := &TestConfig[string, struct{}]{
 		InputExt:         ".hcl",
 		ErrorOutputExt:   ".txt",
 		SuccessOutputExt: ".json",
-		StepTestFunc: func(stepFile StepFile) (string, error) {
+		StepTestFunc: func(_ context.Context, _ struct{}, stepFile StepFile) (string, error) {
 			return string(stepFile.Data), nil
 		},
 		ErrorFunc: func(err error) []byte {

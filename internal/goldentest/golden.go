@@ -13,12 +13,18 @@
 //
 // Create a TestConfig with the appropriate test function and call RunTests:
 //
-//		config := &goldentest.TestConfig[*MyResult]{
+//		config := &goldentest.TestConfig[*MyResult, *MyFixture]{
 //			InputExt:         ".hcl",
 //			ErrorOutputExt:   ".txt",
 //			SuccessOutputExt: ".json",
-//	 	  TestOneShotFunc: func(filePath string, data []byte) (*MyResult, error) {
-//	 	  	return processInput(data)
+//			SetUp: func(t *testing.T) (*MyFixture, error) {
+//				return &MyFixture{Client: createClient()}, nil
+//			},
+//			TearDown: func(t *testing.T, fixture *MyFixture) error {
+//				return fixture.Client.Close()
+//			},
+//	 	  TestOneShotFunc: func(fixture *MyFixture, filePath string, data []byte) (*MyResult, error) {
+//	 	  	return processInput(fixture.Client, data)
 //	 	  },
 //	 	  ErrorFunc: func(err error) []byte {
 //	 	  	return []byte(err.Error())
@@ -39,13 +45,22 @@
 // (1.hcl, 2.hcl, etc.) within subdirectories, and each step's output is
 // compared against corresponding output files (1.out.json, 2.out.json, etc.).
 //
-//			config := &goldentest.TestConfig[*StepResult]{
+//			config := &goldentest.TestConfig[*StepResult, *ServerFixture]{
 //				InputExt:         ".in.textpb",
 //				ErrorOutputExt:   ".txt",
 //				SuccessOutputExt: ".textpb",
 //				DiffOpts:         []cmp.Option{protocmp.Transform()},
-//			  StepTestFunc: func(stepFile goldentest.StepFile) (*StepResult, error) {
-//			  	return processStep(stepFile.Data)
+//				SetUp: func(t *testing.T) (*ServerFixture, error) {
+//					server := startTestServer()
+//					client, err := grpc.Dial(server.Address())
+//					return &ServerFixture{Client: client, Server: server}, err
+//				},
+//				TearDown: func(t *testing.T, fixture *ServerFixture) error {
+//					fixture.Client.Close()
+//					return fixture.Server.Stop()
+//				},
+//			  StepTestFunc: func(ctx context.Context, fixture *ServerFixture, stepFile goldentest.StepFile) (*StepResult, error) {
+//			  	return processStep(ctx, fixture.Client, stepFile.Data)
 //			  },
 //			  ErrorFunc: func(err error) []byte {
 //			  	return []byte(err.Error())
@@ -109,9 +124,47 @@ import (
 // Update is a flag that controls whether golden files should be updated
 var Update = flag.Bool("update", false, "update .out files if there is a difference")
 
+// SetUpFunc creates a fixture for a test case. The fixture is passed to all test functions
+// within the same test case and is created fresh for each test case.
+//
+// Parameters:
+//   - t: The testing.T instance for the current test case
+//
+// Returns:
+//   - F: The fixture to be shared across test steps
+//   - error: Error if fixture creation fails (will fail the entire test case)
+//
+// Example:
+//
+//	config.SetUp = func(t *testing.T) (*ServerFixture, error) {
+//		server := startTestServer()
+//		client, err := grpc.Dial(server.Address())
+//		return &ServerFixture{Client: client, Server: server}, err
+//	}
+type SetUpFunc[F any] func(t *testing.T) (F, error)
+
+// TearDownFunc cleans up a fixture after a test case completes.
+// Called even if the test case fails, similar to defer behavior.
+//
+// Parameters:
+//   - t: The testing.T instance for the current test case
+//   - fixture: The fixture that was created by SetUpFunc
+//
+// Returns:
+//   - error: Error if cleanup fails (will be reported via t.Error)
+//
+// Example:
+//
+//	config.TearDown = func(t *testing.T, fixture *ServerFixture) error {
+//		fixture.Client.Close()
+//		return fixture.Server.Stop()
+//	}
+type TearDownFunc[F any] func(t *testing.T, fixture F) error
+
 // TestConfig holds configuration for golden file testing.
 //
-// TestConfig is generic over the result type T that test functions return.
+// TestConfig is generic over the result type T that test functions return and
+// the fixture type F that is shared between test steps.
 // Exactly one of TestFunc or StepTestFunc must be set to determine the testing mode.
 //
 // Configuration fields:
@@ -125,14 +178,18 @@ var Update = flag.Bool("update", false, "update .out files if there is a differe
 //   - TestOneShotFunc: For one-shot tests, processes individual input files
 //   - StepTestFunc: For step tests, processes sequential numbered files
 //
-// Error handling fields (all three must be set together, or all left unset):
+// Fixture fields (optional):
+//   - SetUp: Creates fixture for each test case (if nil, zero value is used)
+//   - TearDown: Cleans up fixture after test case (if nil, no cleanup)
+//
+// Error handling fields (ErrorFunc and ErrorOutputExt must both be set or both unset):
 //   - ErrorFunc: Converts errors to byte representation for comparison
-//   - ErrorPrefix: Prefix to identify error test case files (e.g., "error_")
-//   - ErrorOutputExt: Extension for error output files (e.g., ".out.txt")
+//   - ErrorPrefix: Prefix to identify error test case files (defaults to "error_")
+//   - ErrorOutputExt: Extension for error output files (e.g., ".txt")
 //
 // The RunTests method automatically dispatches to the appropriate test mode
 // based on which test function is configured.
-type TestConfig[T any] struct {
+type TestConfig[T, F any] struct {
 	// InputExt is the file extension for input files (e.g., ".hcl", ".in.textpb")
 	InputExt string
 	// ErrorPrefix is the prefix used to identify error test cases (e.g., "error_").
@@ -160,16 +217,24 @@ type TestConfig[T any] struct {
 	// If not set, only cmpopts.EquateEmpty() will be used.
 	DiffOpts []cmp.Option
 
+	// SetUp creates a fixture for each test case. The fixture is shared across all steps
+	// in a step test, but created fresh for each test case. If nil, the zero value of F is used.
+	SetUp SetUpFunc[F]
+
+	// TearDown cleans up the fixture after a test case completes. Called even if tests fail.
+	// If nil, no cleanup is performed.
+	TearDown TearDownFunc[F]
+
 	// TestOneShotFunc processes input data for one-shot tests. Set this for single-file golden tests.
 	// Must not be set if StepTestFunc is set.
-	TestOneShotFunc TestOneShotFunc[T]
+	TestOneShotFunc TestOneShotFunc[T, F]
 
 	// StepTestFunc processes individual steps for multi-step tests. Set this for sequential golden tests.
 	// Must not be set if TestOneShotFunc is set.
-	StepTestFunc StepTestFunc[T]
+	StepTestFunc StepTestFunc[T, F]
 
 	// ErrorFunc converts errors to byte representation for golden file comparison.
-	// Must be set together with ErrorPrefix and ErrorOutputExt, or left nil with both unset.
+	// Must be set together with ErrorOutputExt, or left nil if ErrorOutputExt is unset.
 	// If error handling is disabled, tests that return errors will fail immediately.
 	ErrorFunc ErrorFunc
 }
@@ -177,10 +242,10 @@ type TestConfig[T any] struct {
 // TestOneShotFunc is a function that processes input data for one-shot golden tests.
 //
 // Used for single-file golden tests where each input file is processed independently.
-// The function receives the full file path and content, and should return either a
-// result of type T for successful processing, or an error for failed processing.
+// The function receives a fixture, the full file path, and content.
 //
 // Parameters:
+//   - fixture: Fixture created by SetUpFunc for this test case
 //   - filePath: Full path to the input file being processed
 //   - data: Raw content of the input file
 //
@@ -190,10 +255,10 @@ type TestConfig[T any] struct {
 //
 // Example:
 //
-//	config.TestOneShotFunc = func(filePath string, data []byte) (*Config, error) {
-//		return parseConfig(filePath, data)
+//	TestOneShotFunc: func(fixture *ServerFixture, filePath string, data []byte) (*Config, error) {
+//		return parseConfigWithClient(fixture.Client, filePath, data)
 //	}
-type TestOneShotFunc[T any] func(filePath string, data []byte) (T, error)
+type TestOneShotFunc[T, F any] func(fixture F, filePath string, data []byte) (T, error)
 
 // ErrorFunc is a function that extracts error text from an error
 type ErrorFunc func(err error) []byte
@@ -332,7 +397,7 @@ func DefaultLoader[T any]() Loader[T] {
 // The method handles error cases (files prefixed with ErrorPrefix) by comparing
 // the error output against .out.txt files, and success cases by comparing the
 // result against output files using the configured Formatter and Loader.
-func (config *TestConfig[T]) RunTests(t *testing.T, dir string) {
+func (config *TestConfig[T, F]) RunTests(t *testing.T, dir string) {
 	// Check which test functions are set and dispatch accordingly
 	oneShotFuncSet := config.TestOneShotFunc != nil
 	stepTestFuncSet := config.StepTestFunc != nil
@@ -380,7 +445,7 @@ func (config *TestConfig[T]) RunTests(t *testing.T, dir string) {
 }
 
 // runOneShotTests runs golden file tests for all files in the specified directory
-func (config *TestConfig[T]) runOneShotTests(t *testing.T, dir string) {
+func (config *TestConfig[T, F]) runOneShotTests(t *testing.T, dir string) {
 	files, err := os.ReadDir(dir)
 	if err != nil {
 		t.Fatalf("failed to read testdata directory: %v", err)
@@ -392,6 +457,25 @@ func (config *TestConfig[T]) runOneShotTests(t *testing.T, dir string) {
 		}
 
 		t.Run(file.Name(), func(t *testing.T) {
+			// Set up fixture for this test case
+			var fixture F
+			var setUpErr error
+			if config.SetUp != nil {
+				fixture, setUpErr = config.SetUp(t)
+				if setUpErr != nil {
+					t.Fatalf("SetUp failed for file %s: %v", file.Name(), setUpErr)
+				}
+			}
+
+			// Ensure teardown runs even if test fails
+			defer func() {
+				if config.TearDown != nil {
+					if tearDownErr := config.TearDown(t, fixture); tearDownErr != nil {
+						t.Errorf("TearDown failed for file %s: %v", file.Name(), tearDownErr)
+					}
+				}
+			}()
+
 			filePath := filepath.Join(dir, file.Name())
 			data, err := os.ReadFile(filePath)
 			if err != nil {
@@ -399,7 +483,7 @@ func (config *TestConfig[T]) runOneShotTests(t *testing.T, dir string) {
 			}
 
 			outputFile := strings.TrimSuffix(file.Name(), config.InputExt)
-			result, testErr := config.TestOneShotFunc(filePath, data)
+			result, testErr := config.TestOneShotFunc(fixture, filePath, data)
 
 			// Check if error handling is configured
 			errorHandlingEnabled := config.ErrorFunc != nil
@@ -428,7 +512,7 @@ func (config *TestConfig[T]) runOneShotTests(t *testing.T, dir string) {
 	}
 }
 
-func (config *TestConfig[T]) testErrorCase(t *testing.T, dir, fileName, outputFile string, testErr error, errorFunc ErrorFunc) {
+func (config *TestConfig[T, F]) testErrorCase(t *testing.T, dir, fileName, outputFile string, testErr error, errorFunc ErrorFunc) {
 	outputFile += ".out" + config.ErrorOutputExt
 	if testErr == nil {
 		t.Errorf("expected error for file %s, but got none", fileName)
@@ -452,7 +536,7 @@ func (config *TestConfig[T]) testErrorCase(t *testing.T, dir, fileName, outputFi
 	}
 }
 
-func (config *TestConfig[T]) testSuccessCase(t *testing.T, dir, fileName, outputFile string, result T, testErr error) {
+func (config *TestConfig[T, F]) testSuccessCase(t *testing.T, dir, fileName, outputFile string, result T, testErr error) {
 	outputFile += ".out" + config.SuccessOutputExt
 	if testErr != nil {
 		t.Errorf("unexpected error for file %s: %v", fileName, testErr)

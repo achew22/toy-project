@@ -40,3 +40,7 @@ This is a Go-based gRPC server project with HCL configuration parsing:
 ### Configuration Format
 
 Server expects HCL files with required `server` block containing `listening_address` in host:port format. Supports custom HCL functions for dynamic configuration.
+
+### General instructions
+
+- Before considering any work done, be sure to run `make fmt` to ensure the files are formatted properly.
