@@ -4,7 +4,9 @@ import (
 	"context"
 	"testing"
 
+	"github.com/google/go-cmp/cmp"
 	"google.golang.org/protobuf/encoding/prototext"
+	"google.golang.org/protobuf/testing/protocmp"
 
 	"github.com/achew22/toy-project/internal/goldentest"
 	"github.com/achew22/toy-project/internal/server/servertest/client"
@@ -33,38 +35,36 @@ func RunGoldenStepTests(t *testing.T) {
 	// Create the unified client
 	grpcClient := client.NewClient(conn)
 
-	config := &goldentest.TestConfig{
-		TestDataDir:      "testdata",
+	config := &goldentest.TestConfig[*pb.TestStepOut]{
 		InputExt:         ".in.textpb",
-		ErrorPrefix:      "error_",
-		ErrorOutputExt:   ".out.txt",
-		SuccessOutputExt: ".out.textpb",
-		UsePrototext:     true,
+		ErrorOutputExt:   ".txt",
+		SuccessOutputExt: ".textpb",
+		DiffOpts:         []cmp.Option{protocmp.Transform()},
+
+		StepTestFunc: func(stepFile goldentest.StepFile) (*pb.TestStepOut, error) {
+			// Parse the input step
+			stepIn := &pb.TestStepIn{}
+			if err := prototext.Unmarshal(stepFile.Data, stepIn); err != nil {
+				return nil, err
+			}
+
+			// Execute the RPC
+			response, err := grpcClient.Execute(context.Background(), stepIn.Rpc)
+			if err != nil {
+				return nil, err
+			}
+
+			// Create the output step
+			stepOut := &pb.TestStepOut{
+				Rpc: response,
+			}
+			return stepOut, nil
+		},
+
+		ErrorFunc: func(err error) []byte {
+			return []byte(err.Error())
+		},
 	}
 
-	stepTestFunc := func(stepFile goldentest.StepFile) (*pb.TestStepOut, error) {
-		// Parse the input step
-		stepIn := &pb.TestStepIn{}
-		if err := prototext.Unmarshal(stepFile.Data, stepIn); err != nil {
-			return nil, err
-		}
-
-		// Execute the RPC
-		response, err := grpcClient.Execute(context.Background(), stepIn.Rpc)
-		if err != nil {
-			return nil, err
-		}
-
-		// Create the output step
-		stepOut := &pb.TestStepOut{
-			Rpc: response,
-		}
-		return stepOut, nil
-	}
-
-	errorFunc := func(err error) []byte {
-		return []byte(err.Error())
-	}
-
-	goldentest.RunStepTests(t, config, stepTestFunc, errorFunc)
+	config.RunTests(t, "testdata")
 }
