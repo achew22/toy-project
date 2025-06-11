@@ -38,7 +38,7 @@ func TestValidateAndLoadStepFiles(t *testing.T) {
 			SuccessOutputExt: ".json",
 			ErrorOutputExt:   ".txt",
 		}
-		stepFiles, err := validateAndLoadStepFiles(stepDir, ".hcl", config)
+		stepFiles, err := validateAndLoadStepFiles(stepDir, config)
 		if err != nil {
 			t.Fatalf("expected no error, got: %v", err)
 		}
@@ -81,7 +81,7 @@ func TestValidateAndLoadStepFiles(t *testing.T) {
 			SuccessOutputExt: ".json",
 			ErrorOutputExt:   ".txt",
 		}
-		_, err := validateAndLoadStepFiles(stepDir, ".hcl", config)
+		_, err := validateAndLoadStepFiles(stepDir, config)
 		if err == nil {
 			t.Fatal("expected error for gap in sequence, got none")
 		}
@@ -106,7 +106,7 @@ func TestValidateAndLoadStepFiles(t *testing.T) {
 			SuccessOutputExt: ".json",
 			ErrorOutputExt:   ".txt",
 		}
-		_, err := validateAndLoadStepFiles(stepDir, ".hcl", config)
+		_, err := validateAndLoadStepFiles(stepDir, config)
 		if err == nil {
 			t.Fatal("expected error for wrong extension, got none")
 		}
@@ -131,7 +131,7 @@ func TestValidateAndLoadStepFiles(t *testing.T) {
 			SuccessOutputExt: ".json",
 			ErrorOutputExt:   ".txt",
 		}
-		_, err := validateAndLoadStepFiles(stepDir, ".hcl", config)
+		_, err := validateAndLoadStepFiles(stepDir, config)
 		if err == nil {
 			t.Fatal("expected error for invalid filename, got none")
 		}
@@ -156,7 +156,7 @@ func TestValidateAndLoadStepFiles(t *testing.T) {
 			SuccessOutputExt: ".json",
 			ErrorOutputExt:   ".txt",
 		}
-		_, err := validateAndLoadStepFiles(stepDir, ".hcl", config)
+		_, err := validateAndLoadStepFiles(stepDir, config)
 		if err == nil {
 			t.Fatal("expected error for zero step number, got none")
 		}

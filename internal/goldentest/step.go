@@ -77,7 +77,7 @@ func (config *TestConfig[T, F]) runStepTests(t *testing.T, dir string) {
 			}()
 
 			stepDir := filepath.Join(dir, entry.Name())
-			stepFiles, validateErr := validateAndLoadStepFiles(stepDir, config.InputExt, config)
+			stepFiles, validateErr := validateAndLoadStepFiles[T, F](stepDir, config)
 			if validateErr != nil {
 				t.Fatalf("failed to validate step directory %s: %v", entry.Name(), validateErr)
 			}
@@ -191,7 +191,7 @@ func (config *TestConfig[T, F]) testSuccessCaseSteps(t *testing.T, stepDir strin
 
 // validateAndLoadStepFiles validates that a directory contains a valid sequence of step files
 // and loads their content. Returns an error if the sequence is invalid or if any files are unexpected.
-func validateAndLoadStepFiles[T, F any](stepDir, inputExt string, config *TestConfig[T, F]) ([]StepFile, error) {
+func validateAndLoadStepFiles[T, F any](stepDir string, config *TestConfig[T, F]) ([]StepFile, error) {
 	entries, err := os.ReadDir(stepDir)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read step directory: %w", err)
@@ -211,12 +211,12 @@ func validateAndLoadStepFiles[T, F any](stepDir, inputExt string, config *TestCo
 			continue
 		}
 
-		if !strings.HasSuffix(entry.Name(), inputExt) {
-			return nil, fmt.Errorf("unexpected file %s with wrong extension (expected %s)", entry.Name(), inputExt)
+		if !strings.HasSuffix(entry.Name(), ".in"+config.InputExt) {
+			return nil, fmt.Errorf("unexpected file %s with wrong extension (expected %s)", entry.Name(), ".in"+config.InputExt)
 		}
 
 		// Extract step number from filename
-		baseName := strings.TrimSuffix(entry.Name(), inputExt)
+		baseName := strings.TrimSuffix(entry.Name(), ".in"+config.InputExt)
 		stepNum, parseErr := strconv.Atoi(baseName)
 		if parseErr != nil {
 			return nil, fmt.Errorf("invalid step filename %s: must be a number", entry.Name())

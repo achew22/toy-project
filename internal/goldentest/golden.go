@@ -46,7 +46,7 @@
 // compared against corresponding output files (1.out.json, 2.out.json, etc.).
 //
 //			config := &goldentest.TestConfig[*StepResult, *ServerFixture]{
-//				InputExt:         ".in.textpb",
+//				InputExt:         ".textpb",
 //				ErrorOutputExt:   ".txt",
 //				SuccessOutputExt: ".textpb",
 //				DiffOpts:         []cmp.Option{protocmp.Transform()},
@@ -112,6 +112,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -119,6 +120,7 @@ import (
 	"github.com/google/go-cmp/cmp/cmpopts"
 	"google.golang.org/protobuf/encoding/prototext"
 	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/testing/protocmp"
 )
 
 // Update is a flag that controls whether golden files should be updated
@@ -372,6 +374,323 @@ func DefaultLoader[T any]() Loader[T] {
 			return result, err
 		}
 	}
+}
+
+// inferDefaultOptions returns default configuration options based on the result type T.
+// These options are applied first, so user-provided options can override them.
+// Note: ErrorOutputExt is not set by inference since error handling requires explicit setup.
+func inferDefaultOptions[T, F any]() []ConfigOption[T, F] {
+	var zero T
+	var opts []ConfigOption[T, F]
+
+	// Infer extensions based on type
+	// Note: ErrorOutputExt is not set by inference since error handling requires explicit setup
+	if _, ok := any(zero).(proto.Message); ok {
+		// Proto messages: use textpb for success, add protocmp for diffing
+		opts = append(opts,
+			WithSuccessExt[T, F](".textpb"),
+			WithDiffOpts[T, F](protocmp.Transform()),
+		)
+	} else if _, ok := any(zero).(string); ok {
+		// Strings: use txt for success
+		opts = append(opts,
+			WithSuccessExt[T, F](".txt"),
+		)
+	} else {
+		// Check if type has JSON tags
+		typ := reflect.TypeOf(zero)
+		hasJSONTags := false
+
+		if typ != nil {
+			// Handle pointer types
+			if typ.Kind() == reflect.Ptr {
+				typ = typ.Elem()
+			}
+
+			// Check if it's a struct with JSON tags
+			if typ.Kind() == reflect.Struct {
+				for i := 0; i < typ.NumField(); i++ {
+					field := typ.Field(i)
+					if _, hasTag := field.Tag.Lookup("json"); hasTag {
+						hasJSONTags = true
+						break
+					}
+				}
+			}
+		}
+
+		if hasJSONTags {
+			opts = append(opts,
+				WithSuccessExt[T, F](".json"),
+			)
+		} else {
+			// Default to JSON for everything else
+			opts = append(opts,
+				WithSuccessExt[T, F](".json"),
+			)
+		}
+	}
+
+	return opts
+}
+
+// Option functions for configuring TestConfig
+type ConfigOption[T, F any] func(*TestConfig[T, F])
+
+func WithInputExt[T, F any](ext string) ConfigOption[T, F] {
+	return func(c *TestConfig[T, F]) {
+		c.InputExt = ext
+	}
+}
+
+func WithSuccessExt[T, F any](ext string) ConfigOption[T, F] {
+	return func(c *TestConfig[T, F]) {
+		c.SuccessOutputExt = ext
+	}
+}
+
+func WithErrorExt[T, F any](ext string) ConfigOption[T, F] {
+	return func(c *TestConfig[T, F]) {
+		c.ErrorOutputExt = ext
+	}
+}
+
+func WithExtensions[T, F any](input, success, error string) ConfigOption[T, F] {
+	return func(c *TestConfig[T, F]) {
+		c.InputExt = input
+		c.SuccessOutputExt = success
+		c.ErrorOutputExt = error
+	}
+}
+
+func WithSetUp[T, F any](fn SetUpFunc[F]) ConfigOption[T, F] {
+	return func(c *TestConfig[T, F]) {
+		c.SetUp = fn
+	}
+}
+
+func WithTearDown[T, F any](fn TearDownFunc[F]) ConfigOption[T, F] {
+	return func(c *TestConfig[T, F]) {
+		c.TearDown = fn
+	}
+}
+
+func WithErrorHandling[T, F any](errorFunc ErrorFunc) ConfigOption[T, F] {
+	return func(c *TestConfig[T, F]) {
+		c.ErrorFunc = errorFunc
+	}
+}
+
+func WithDiffOpts[T, F any](opts ...cmp.Option) ConfigOption[T, F] {
+	return func(c *TestConfig[T, F]) {
+		c.DiffOpts = append(c.DiffOpts, opts...)
+	}
+}
+
+func WithFormatter[T, F any](formatter Formatter[T]) ConfigOption[T, F] {
+	return func(c *TestConfig[T, F]) {
+		c.Formatter = formatter
+	}
+}
+
+func WithLoader[T, F any](loader Loader[T]) ConfigOption[T, F] {
+	return func(c *TestConfig[T, F]) {
+		c.Loader = loader
+	}
+}
+
+// stepConfigBuilder provides a fluent interface for building step test configurations
+// with automatic type inference and no explicit type parameters on options.
+type stepConfigBuilder[T, F any] struct {
+	config *TestConfig[T, F]
+}
+
+// NewStepConfig creates a new TestConfig for step-based testing with type inference.
+// The types T and F are inferred from the stepFunc parameter.
+// Returns a builder that provides methods without requiring explicit type parameters.
+func NewStepConfig[T, F any](
+	stepFunc StepTestFunc[T, F],
+) *stepConfigBuilder[T, F] {
+	config := &TestConfig[T, F]{
+		StepTestFunc: stepFunc,
+	}
+
+	// Apply inferred defaults first
+	defaultOpts := inferDefaultOptions[T, F]()
+	for _, opt := range defaultOpts {
+		opt(config)
+	}
+
+	return &stepConfigBuilder[T, F]{config: config}
+}
+
+// WithInputExt sets the input file extension
+func (b *stepConfigBuilder[T, F]) WithInputExt(ext string) *stepConfigBuilder[T, F] {
+	b.config.InputExt = ext
+	return b
+}
+
+// WithSuccessExt sets the success output file extension
+func (b *stepConfigBuilder[T, F]) WithSuccessExt(ext string) *stepConfigBuilder[T, F] {
+	b.config.SuccessOutputExt = ext
+	return b
+}
+
+// WithErrorExt sets the error output file extension
+func (b *stepConfigBuilder[T, F]) WithErrorExt(ext string) *stepConfigBuilder[T, F] {
+	b.config.ErrorOutputExt = ext
+	return b
+}
+
+// WithExtensions sets all file extensions at once
+func (b *stepConfigBuilder[T, F]) WithExtensions(input, success, error string) *stepConfigBuilder[T, F] {
+	b.config.InputExt = input
+	b.config.SuccessOutputExt = success
+	b.config.ErrorOutputExt = error
+	return b
+}
+
+// WithSetUp sets the fixture setup function
+func (b *stepConfigBuilder[T, F]) WithSetUp(fn SetUpFunc[F]) *stepConfigBuilder[T, F] {
+	b.config.SetUp = fn
+	return b
+}
+
+// WithTearDown sets the fixture teardown function
+func (b *stepConfigBuilder[T, F]) WithTearDown(fn TearDownFunc[F]) *stepConfigBuilder[T, F] {
+	b.config.TearDown = fn
+	return b
+}
+
+// WithErrorHandling sets error handling configuration
+func (b *stepConfigBuilder[T, F]) WithErrorHandling(errorFunc ErrorFunc) *stepConfigBuilder[T, F] {
+	b.config.ErrorFunc = errorFunc
+	return b
+}
+
+// WithDiffOpts adds comparison options for cmp.Diff
+func (b *stepConfigBuilder[T, F]) WithDiffOpts(opts ...cmp.Option) *stepConfigBuilder[T, F] {
+	b.config.DiffOpts = append(b.config.DiffOpts, opts...)
+	return b
+}
+
+// WithFormatter sets a custom formatter function
+func (b *stepConfigBuilder[T, F]) WithFormatter(formatter Formatter[T]) *stepConfigBuilder[T, F] {
+	b.config.Formatter = formatter
+	return b
+}
+
+// WithLoader sets a custom loader function
+func (b *stepConfigBuilder[T, F]) WithLoader(loader Loader[T]) *stepConfigBuilder[T, F] {
+	b.config.Loader = loader
+	return b
+}
+
+// Build returns the final TestConfig
+func (b *stepConfigBuilder[T, F]) Build() *TestConfig[T, F] {
+	return b.config
+}
+
+// RunTests is a convenience method that builds the config and runs tests
+func (b *stepConfigBuilder[T, F]) RunTests(t *testing.T, dir string) {
+	b.Build().RunTests(t, dir)
+}
+
+// oneShotConfigBuilder provides a fluent interface for building one-shot test configurations
+// with automatic type inference and no explicit type parameters on options.
+type oneShotConfigBuilder[T, F any] struct {
+	config *TestConfig[T, F]
+}
+
+// NewOneShotConfig creates a new TestConfig for one-shot testing with type inference.
+// The types T and F are inferred from the oneShotFunc parameter.
+// Returns a builder that provides methods without requiring explicit type parameters.
+func NewOneShotConfig[T, F any](
+	oneShotFunc TestOneShotFunc[T, F],
+) *oneShotConfigBuilder[T, F] {
+	config := &TestConfig[T, F]{
+		TestOneShotFunc: oneShotFunc,
+	}
+
+	// Apply inferred defaults first
+	defaultOpts := inferDefaultOptions[T, F]()
+	for _, opt := range defaultOpts {
+		opt(config)
+	}
+
+	return &oneShotConfigBuilder[T, F]{config: config}
+}
+
+// WithInputExt sets the input file extension
+func (b *oneShotConfigBuilder[T, F]) WithInputExt(ext string) *oneShotConfigBuilder[T, F] {
+	b.config.InputExt = ext
+	return b
+}
+
+// WithSuccessExt sets the success output file extension
+func (b *oneShotConfigBuilder[T, F]) WithSuccessExt(ext string) *oneShotConfigBuilder[T, F] {
+	b.config.SuccessOutputExt = ext
+	return b
+}
+
+// WithErrorExt sets the error output file extension
+func (b *oneShotConfigBuilder[T, F]) WithErrorExt(ext string) *oneShotConfigBuilder[T, F] {
+	b.config.ErrorOutputExt = ext
+	return b
+}
+
+// WithExtensions sets all file extensions at once
+func (b *oneShotConfigBuilder[T, F]) WithExtensions(input, success, error string) *oneShotConfigBuilder[T, F] {
+	b.config.InputExt = input
+	b.config.SuccessOutputExt = success
+	b.config.ErrorOutputExt = error
+	return b
+}
+
+// WithSetUp sets the fixture setup function
+func (b *oneShotConfigBuilder[T, F]) WithSetUp(fn SetUpFunc[F]) *oneShotConfigBuilder[T, F] {
+	b.config.SetUp = fn
+	return b
+}
+
+// WithTearDown sets the fixture teardown function
+func (b *oneShotConfigBuilder[T, F]) WithTearDown(fn TearDownFunc[F]) *oneShotConfigBuilder[T, F] {
+	b.config.TearDown = fn
+	return b
+}
+
+// WithErrorHandling sets error handling configuration
+func (b *oneShotConfigBuilder[T, F]) WithErrorHandling(errorFunc ErrorFunc) *oneShotConfigBuilder[T, F] {
+	b.config.ErrorFunc = errorFunc
+	return b
+}
+
+// WithDiffOpts adds comparison options for cmp.Diff
+func (b *oneShotConfigBuilder[T, F]) WithDiffOpts(opts ...cmp.Option) *oneShotConfigBuilder[T, F] {
+	b.config.DiffOpts = append(b.config.DiffOpts, opts...)
+	return b
+}
+
+// WithFormatter sets a custom formatter function
+func (b *oneShotConfigBuilder[T, F]) WithFormatter(formatter Formatter[T]) *oneShotConfigBuilder[T, F] {
+	b.config.Formatter = formatter
+	return b
+}
+
+// WithLoader sets a custom loader function
+func (b *oneShotConfigBuilder[T, F]) WithLoader(loader Loader[T]) *oneShotConfigBuilder[T, F] {
+	b.config.Loader = loader
+	return b
+}
+
+// Build returns the final TestConfig
+func (b *oneShotConfigBuilder[T, F]) Build() *TestConfig[T, F] {
+	return b.config
+}
+
+// RunTests is a convenience method that builds the config and runs tests
+func (b *oneShotConfigBuilder[T, F]) RunTests(t *testing.T, dir string) {
+	b.Build().RunTests(t, dir)
 }
 
 // RunTests runs golden file tests for all files in the specified directory.
